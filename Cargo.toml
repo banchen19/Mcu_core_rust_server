@@ -1,0 +1,53 @@
+[package]
+name = "http_server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+# actix系列
+actix = "0.13.0"
+actix-files = "0.6.2"
+actix-web = "4"
+actix-web-actors = "4.1.0"
+actix-cors = "0.7.0"
+
+# 多线程异步
+tokio = { version = "1", features = ["full"] }
+futures-util = { version = "0.3", default-features = false }
+
+# 数据库
+sqlx={version="0.7.4",features=["postgres","runtime-tokio-rustls","macros","chrono","sqlite","mysql"]}
+
+# 解析
+serde_yaml = "0.9.27"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.88"
+
+# token
+rand = "0.8.5"
+chrono = "0.4.38"
+env_logger = "0.11.3"
+log = "0.4.21"
+
+
+# 加密库
+md-5 = "0.10.6"
+aes = "0.8"
+cbc = "0.1.2"
+sha2 = "0.9"
+rust-crypto = "0.2.36"
+rand_core = { version = "0.6", features = ["std"] }
+base64="0.22.0"
+jsonwebtoken = "9.3.0"
+
+# 邮箱库
+lettre = "0.11.3"
+lettre_email = "0.9.4"
+
+# html
+build_html = "2.4.0"
+
+# http请求
+reqwest = "0.12.4"
+hex-literal = "0.4.1"

@@ -1,0 +1,9 @@
+name: actix-web-http-server
+v4port: 2024
+v6port: 2024
+sql_mode: sqlite
+sql_url: sqlite://sqlite.db
+email_config:
+  mine_email: 738270846@qq.com
+  smtp_server: smtp.qq.com
+  email_password: crmhckfoigatbgaa
