@@ -120,7 +120,7 @@ pub async fn login(
                 message: &token,
             })
         }
-        Err(_) => HttpResponse::Ok().json(ResponseMessage {
+        Err(_) => HttpResponse::InternalServerError().json(ResponseMessage {
             code: 500,
             message: "账号或密码错误",
         }),

@@ -85,14 +85,18 @@ async fn main() -> Result<(), std::io::Error> {
                     cfg.service(
                         web::scope("/java").service(
                             web::scope("/player")
-                                .route("/bind", web::post().to(web_player::add_bind_player)),
+                                .route("/bind", web::post().to(web_player::add_bind_player))
+                                // 验证账绑定了指定的玩家
+                                .route("/login", web::get().to(web_player::login))
+                                // 检查玩家是否为正版玩家
+                                .route("/check_player", web::get().to(web_player::check_player)),
                         ),
                     );
                 }),
             )
     })
     .bind(("0.0.0.0", v4port))? //ipv4
-    .bind(("[::1]", v6port))? //ipv6
+    // .bind(("[::]", v6port))? //ipv6
     .run()
     .await
 }

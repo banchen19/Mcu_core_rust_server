@@ -9,7 +9,7 @@ use sqlx::{
     migrate::MigrateDatabase, Connection, MySqlConnection, PgConnection, Sqlite, SqliteConnection,
 };
 
-use super::user::sql_user::create_user_table;
+use super::{java::player::sql_player::create_player_table, user::sql_user::create_user_table};
 
 // 请求时消息
 #[derive(Debug, Serialize, Deserialize)]
@@ -128,5 +128,6 @@ pub async fn get_conn(config: &HttpServerConfig) -> Result<ConnectionType, sqlx:
 
 pub(crate) async fn init_db(config: &HttpServerConfig) -> ConnectionType {
     let conn: ConnectionType = get_conn(config).await.unwrap();
-    create_user_table(conn).await.unwrap()
+    let conn =create_user_table(conn).await.unwrap();
+    create_player_table(conn).await.unwrap()
 }

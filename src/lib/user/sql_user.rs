@@ -79,8 +79,7 @@ pub async fn login_user(conn: ConnectionType, user: &RegisterUser) -> Result<i64
                 .fetch_one(&mut conn)
                 .await?;
 
-            let id: i64 = row.try_get("id").unwrap();
-            Ok(id)
+            Ok(row.try_get("id")?)
         }
         ConnectionType::Mysql(mut conn) => {
             let row = sqlx::query(sql)
@@ -88,8 +87,7 @@ pub async fn login_user(conn: ConnectionType, user: &RegisterUser) -> Result<i64
                 .bind(&user.password)
                 .fetch_one(&mut conn)
                 .await?;
-            let id: i64 = row.try_get("id").unwrap();
-            Ok(id)
+            Ok(row.try_get("id")?)
         }
         ConnectionType::Postgres(mut conn) => {
             let row = sqlx::query(sql)
@@ -97,8 +95,7 @@ pub async fn login_user(conn: ConnectionType, user: &RegisterUser) -> Result<i64
                 .bind(&user.password)
                 .fetch_one(&mut conn)
                 .await?;
-            let id: i64 = row.try_get("id").unwrap();
-            Ok(id)
+            Ok(row.try_get("id")?)
         }
     }
 }

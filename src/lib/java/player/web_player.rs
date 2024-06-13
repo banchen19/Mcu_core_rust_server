@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use actix_web::{http::header::AUTHORIZATION, web, HttpRequest, HttpResponse};
+use log::info;
 use reqwest::Client;
 
 use crate::lib::{
@@ -17,6 +18,13 @@ pub async fn add_bind_player(
     req: HttpRequest,
 ) -> HttpResponse {
     let player_name = quer_player.get("player_name").unwrap();
+    let player_password = quer_player.get("password").unwrap();
+    if player_name.len() <= 1 {
+        return HttpResponse::Ok().json(ResponseMessage {
+            code: 200,
+            message: "玩家名字过短",
+        });
+    }
     let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
     match gettoken_to_user_no_time(token) {
         Ok(user) => {
@@ -39,11 +47,11 @@ pub async fn add_bind_player(
             match serde_json::from_str::<Player>(&response) {
                 Ok(player) => {
                     let conn = get_conn(&config).await.unwrap();
-
                     match sql_player::sql_add_player(
                         conn,
                         uid.try_into().unwrap(),
                         &player.name,
+                        player_password,
                         &player.id,
                     )
                     .await
@@ -57,7 +65,7 @@ pub async fn add_bind_player(
                         Err(_) => {
                             return HttpResponse::Ok().json(ResponseMessage {
                                 code: 200,
-                                message: "已被绑定过",
+                                message: "正版账号->已被绑定",
                             });
                         }
                     }
@@ -69,6 +77,7 @@ pub async fn add_bind_player(
                         conn,
                         uid.try_into().unwrap(),
                         player_name,
+                        player_password,
                         "离线玩家",
                     )
                     .await
@@ -82,7 +91,7 @@ pub async fn add_bind_player(
                         Err(_) => {
                             return HttpResponse::Ok().json(ResponseMessage {
                                 code: 200,
-                                message: "已被绑定过",
+                                message: "离线账号->已被绑定",
                             });
                         }
                     }
@@ -92,39 +101,56 @@ pub async fn add_bind_player(
         Err(_) => {
             return HttpResponse::Unauthorized().json(ResponseMessage {
                 code: 401,
-                message: "token验证失败",
+                message: "token已过期",
             });
         }
     }
 }
 
-// 验证账号是否绑定
-pub async fn verify_player(config: web::Data<HttpServerConfig>, req: HttpRequest) -> HttpResponse {
-    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
-    match gettoken_to_user_no_time(token) {
-        Ok(user) => {
-            let uid = user.claims.uid;
-            let conn = get_conn(&config).await.unwrap();
-            let player = sql_player::sql_get_player(conn, uid.try_into().unwrap())
-                .await
-                .unwrap();
-            if player.is_empty() {
-                return HttpResponse::Ok().json(ResponseMessage {
-                    code: 200,
-                    message: "未绑定",
-                });
-            } else {
-                return HttpResponse::Ok().json(ResponseMessage {
-                    code: 200,
-                    message: "已绑定",
-                });
-            }
-        }
-        Err(_) => {
-            return HttpResponse::Unauthorized().json(ResponseMessage {
-                code: 401,
-                message: "token验证失败",
+// 便捷密码登录
+pub async fn login(
+    config: web::Data<HttpServerConfig>,
+    quer_user: web::Query<HashMap<String, String>>,
+) -> HttpResponse {
+    let password = quer_user.get("password").unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    let player = sql_player::sql_get_player(conn, password).await;
+    match player {
+        Ok(_) => {
+            return HttpResponse::Ok().json(ResponseMessage {
+                code: 200,
+                message: "登录成功",
             });
         }
+        Err(_err) => {
+            return HttpResponse::Created().json(ResponseMessage {
+                code: 201,
+                message: "登录失败",
+            })
+        }
+    }
+}
+
+// 检查玩家是否为绑定玩家
+pub async fn check_player(
+    config: web::Data<HttpServerConfig>,
+    quer_user: web::Query<HashMap<String, String>>,
+) -> HttpResponse {
+    let player_name = quer_user.get("player_name").unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    let player = sql_player::sql_get_player_is_official(conn, player_name)
+        .await
+        .unwrap();
+
+    if player {
+        return HttpResponse::Ok().json(ResponseMessage {
+            code: 200,
+            message: "正版玩家",
+        });
+    } else {
+        return HttpResponse::Created().json(ResponseMessage {
+            code: 201,
+            message: "离线玩家",
+        });
     }
 }
