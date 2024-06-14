@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use actix_web::{http::header::AUTHORIZATION, web, HttpRequest, HttpResponse};
 use log::info;
 use reqwest::Client;
+use serde_json::json;
 
 use crate::lib::{
     config::{get_conn, HttpServerConfig, ResponseMessage},
@@ -65,7 +66,7 @@ pub async fn add_bind_player(
                         Err(_) => {
                             return HttpResponse::Ok().json(ResponseMessage {
                                 code: 200,
-                                message: "正版账号->已被绑定",
+                                message: "正版账号->绑定失败,请检查密码或token是否合规,密码必须是唯一且只有自己知道",
                             });
                         }
                     }
@@ -91,7 +92,7 @@ pub async fn add_bind_player(
                         Err(_) => {
                             return HttpResponse::Ok().json(ResponseMessage {
                                 code: 200,
-                                message: "离线账号->已被绑定",
+                                message: "离线账号->绑定失败,请检查密码或token是否合规,密码必须是唯一且只有自己知道",
                             });
                         }
                     }
@@ -152,5 +153,114 @@ pub async fn check_player(
             code: 201,
             message: "离线玩家",
         });
+    }
+}
+
+// 查询uid拥有的java账户
+pub async fn query_player(config: web::Data<HttpServerConfig>, req: HttpRequest) -> HttpResponse {
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    // 验证token
+    match gettoken_to_user_no_time(token) {
+        Ok(user) => {
+            let uid = user.claims.uid;
+            let conn = get_conn(&config).await.unwrap();
+            match sql_player::query_user(conn, uid.try_into().unwrap()).await {
+                Ok(player_list) => {
+                    return HttpResponse::Ok().json(player_list);
+                }
+                Err(_) => {
+                    return HttpResponse::Ok().json(ResponseMessage {
+                        code: 404,
+                        message: "查询失败",
+                    });
+                }
+            }
+        }
+        Err(_) => {
+            return HttpResponse::Unauthorized().json(ResponseMessage {
+                code: 401,
+                message: "token已过期",
+            });
+        }
+    }
+}
+
+// 修改玩家快捷密码
+pub async fn update_player(
+    config: web::Data<HttpServerConfig>,
+    quer_player: web::Query<HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let player_name = quer_player.get("player_name").unwrap();
+    let player_password = quer_player.get("password").unwrap();
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    match gettoken_to_user_no_time(token) {
+        Ok(user) => {
+            let uid = user.claims.uid;
+            let conn = get_conn(&config).await.unwrap();
+            match sql_player::sql_update_player_password(
+                conn,
+                player_name,
+                player_password,
+                uid.try_into().unwrap(),
+            )
+            .await
+            {
+                Ok(_) => {
+                    return HttpResponse::Ok().json(ResponseMessage {
+                        code: 200,
+                        message: "修改成功",
+                    });
+                }
+                Err(_) => {
+                    return HttpResponse::Ok().json(ResponseMessage {
+                        code: 200,
+                        message: "修改失败",
+                    });
+                }
+            }
+        }
+        Err(_) => {
+            return HttpResponse::Unauthorized().json(ResponseMessage {
+                code: 401,
+                message: "token已过期",
+            });
+        }
+    }
+}
+
+// 删除绑定玩家
+pub async fn delete_player(
+    config: web::Data<HttpServerConfig>,
+    quer_player: web::Query<HashMap<String, String>>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let player_name = quer_player.get("player_name").unwrap();
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    match gettoken_to_user_no_time(token) {
+        Ok(user) => {
+            let uid = user.claims.uid;
+            let conn = get_conn(&config).await.unwrap();
+            match sql_player::sql_delete_player(conn, player_name, uid.try_into().unwrap()).await {
+                Ok(_) => {
+                    return HttpResponse::Ok().json(ResponseMessage {
+                        code: 200,
+                        message: "删除成功",
+                    });
+                }
+                Err(_) => {
+                    return HttpResponse::Ok().json(ResponseMessage {
+                        code: 200,
+                        message: "删除失败",
+                    });
+                }
+            }
+        }
+        Err(_) => {
+            return HttpResponse::Unauthorized().json(ResponseMessage {
+                code: 401,
+                message: "token已过期",
+            });
+        }
     }
 }

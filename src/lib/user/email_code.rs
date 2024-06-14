@@ -252,3 +252,4 @@ impl Handler<EmailCodeSend> for EmailManager {
             .send_email_code(emailcodesend.code, emailcodesend.to_email)
     }
 }
+

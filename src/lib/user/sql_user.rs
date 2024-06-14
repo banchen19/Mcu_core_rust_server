@@ -1,3 +1,4 @@
+use futures_util::TryStreamExt;
 use sqlx::Row;
 
 use crate::lib::config::ConnectionType;
@@ -100,14 +101,91 @@ pub async fn login_user(conn: ConnectionType, user: &RegisterUser) -> Result<i64
     }
 }
 
+// 修改密码
+pub async fn change_password(
+    conn: ConnectionType,
+    user: &RegisterUser,
+) -> Result<u64, sqlx::Error> {
+    let sql = r#"
+        UPDATE user SET password = ? WHERE email = ?;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(&user.password)
+                .bind(&user.email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.last_insert_rowid().try_into().unwrap())
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(&user.password)
+                .bind(&user.email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.last_insert_id())
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(&user.password)
+                .bind(&user.email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.rows_affected())
+        }
+    }
+}
+
+// admin-获取所有用户
+pub async fn get_all_user(conn: ConnectionType) -> Result<Vec<RegisterUser>, sqlx::Error> {
+    let sql = r#"
+        SELECT email, password FROM user;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let mut vec = Vec::new();
+            let mut quer = sqlx::query(sql).fetch(&mut conn);
+            while let Some(row) = quer.try_next().await? {
+                vec.push(RegisterUser {
+                    email: row.try_get("email")?,
+                    password: row.try_get("password")?,
+                });
+            }
+            Ok(vec)
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let mut vec = Vec::new();
+            let mut quer = sqlx::query(sql).fetch(&mut conn);
+            while let Some(row) = quer.try_next().await? {
+                vec.push(RegisterUser {
+                    email: row.try_get("email")?,
+                    password: row.try_get("password")?,
+                });
+            }
+            Ok(vec)
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let mut vec = Vec::new();
+            let mut quer = sqlx::query(sql).fetch(&mut conn);
+            while let Some(row) = quer.try_next().await? {
+                vec.push(RegisterUser {
+                    email: row.try_get("email")?,
+                    password: row.try_get("password")?,
+                });
+            }
+            Ok(vec)
+        }
+    }
+}
+
 // 测试
 #[tokio::test]
 async fn test_register_user() {
     use crate::lib::config::HttpServerConfig;
     let conn = crate::lib::config::init_db(&HttpServerConfig::default()).await;
-    let user = RegisterUser {
-        email: " [email protected]".to_string(),
-        password: "123456".to_string(),
-    };
-    println!("{}", register_user(conn, &user).await.unwrap());
+    let users=get_all_user(conn).await.unwrap();
+    println!("{:?}",users);
 }

@@ -80,7 +80,9 @@ async fn main() -> Result<(), std::io::Error> {
                             // token验证
                             .route("/token_verify", web::get().to(web_user::token_verify))
                             .route("/register", web::post().to(web_user::register))
-                            .route("/login", web::post().to(web_user::login)),
+                            .route("/login", web::post().to(web_user::login))
+                            // 忘记密码
+                            .route("/forget_password", web::post().to(web_user::forget_password)),
                     );
                     cfg.service(
                         web::scope("/java").service(
@@ -89,7 +91,13 @@ async fn main() -> Result<(), std::io::Error> {
                                 // 验证账绑定了指定的玩家
                                 .route("/login", web::get().to(web_player::login))
                                 // 检查玩家是否为正版玩家
-                                .route("/check_player", web::get().to(web_player::check_player)),
+                                .route("/check_player", web::get().to(web_player::check_player))
+                                // 查询拥有的玩家
+                                .route("/query_player", web::get().to(web_player::query_player))
+                                // 修改玩家密码
+                                .route("/update_password", web::post().to(web_player::update_player))
+                                // 删除玩家
+                                .route("/delete_player", web::post().to(web_player::delete_player)),
                         ),
                     );
                 }),

@@ -1,4 +1,5 @@
 use crate::lib::config::ConnectionType;
+use serde::{Deserialize, Serialize};
 use sqlx::Row;
 
 // 创建玩家账号绑定表
@@ -122,10 +123,7 @@ pub async fn sql_get_player_is_official(
 
     match conn {
         ConnectionType::Sqlite(mut conn) => {
-            let player = sqlx::query(sql)
-                .bind(&name)
-                .fetch_one(&mut conn)
-                .await?;
+            let player = sqlx::query(sql).bind(&name).fetch_one(&mut conn).await?;
             let player_id: String = player.try_get(0)?;
             if player_id == "离线玩家" {
                 return Ok(false);
@@ -133,10 +131,7 @@ pub async fn sql_get_player_is_official(
             Ok(true)
         }
         ConnectionType::Mysql(mut conn) => {
-            let player = sqlx::query(sql)
-                .bind(&name)
-                .fetch_one(&mut conn)
-                .await?;
+            let player = sqlx::query(sql).bind(&name).fetch_one(&mut conn).await?;
             let player_id: String = player.try_get(0)?;
             if player_id == "离线玩家" {
                 return Ok(false);
@@ -144,10 +139,7 @@ pub async fn sql_get_player_is_official(
             Ok(true)
         }
         ConnectionType::Postgres(mut conn) => {
-            let player = sqlx::query(sql)
-                .bind(&name)
-                .fetch_one(&mut conn)
-                .await?;
+            let player = sqlx::query(sql).bind(&name).fetch_one(&mut conn).await?;
             let player_id: String = player.try_get(0)?;
             if player_id == "离线玩家" {
                 return Ok(false);
@@ -156,3 +148,196 @@ pub async fn sql_get_player_is_official(
         }
     }
 }
+
+// 查询指定通uid下的player
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Player {
+    name: String,
+    password: String,
+}
+pub async fn query_user(conn: ConnectionType, uid: i64) -> Result<Vec<Player>, sqlx::Error> {
+    let sql: &str = r#"
+        SELECT name,password FROM java_player WHERE uid = ?;
+    "#;
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let player = sqlx::query(sql).bind(&uid).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let player = sqlx::query(sql).bind(&uid).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let player = sqlx::query(sql).bind(&uid).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+    }
+}
+
+// 修改玩家密码
+pub async fn sql_update_player_password(
+    conn: ConnectionType,
+    name: &str,
+    password: &str,
+    uid: i64,
+) -> Result<(), sqlx::Error> {
+    let sql: &str = r#"
+        UPDATE java_player SET password = ? WHERE name = ? and uid = ?;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            sqlx::query(sql)
+                .bind(&password)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+        ConnectionType::Mysql(mut conn) => {
+            sqlx::query(sql)
+                .bind(&password)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+        ConnectionType::Postgres(mut conn) => {
+            sqlx::query(sql)
+                .bind(&password)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+    }
+}
+
+// 删除玩家账号
+pub async fn sql_delete_player(
+    conn: ConnectionType,
+    name: &str,
+    uid: i64,
+) -> Result<(), sqlx::Error> {
+    let sql: &str = r#"
+        DELETE FROM java_player WHERE name = ? and uid = ?;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            sqlx::query(sql)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+        ConnectionType::Mysql(mut conn) => {
+            sqlx::query(sql)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+        ConnectionType::Postgres(mut conn) => {
+            sqlx::query(sql)
+                .bind(&name)
+                .bind(&uid)
+                .execute(&mut conn)
+                .await?;
+            Ok(())
+        }
+    }
+}
+
+
+//admin- 获取所有玩家账号
+pub async fn sql_get_all_player(conn: ConnectionType) -> Result<Vec<Player>, sqlx::Error> {
+    let sql: &str = r#"
+        SELECT name,password FROM java_player;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let player = sqlx::query(sql).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let player = sqlx::query(sql).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let player = sqlx::query(sql).fetch_all(&mut conn).await?;
+            let mut player_list = Vec::new();
+            for row in player {
+                let player = Player {
+                    name: row.try_get(0)?,
+                    password: row.try_get(1)?,
+                };
+                player_list.push(player);
+            }
+            Ok(player_list)
+        }
+    }
+}
+
+
+#[tokio::test]
+async fn test_sql_player() {
+    use crate::lib::config::get_conn;
+    use crate::lib::config::HttpServerConfig;
+
+    let config = HttpServerConfig::default();
+
+    let conn: ConnectionType = get_conn(&config).await.unwrap();
+    let uid = 1;
+    let player_list = query_user(conn, uid).await.unwrap();
+    println!("{:?}", player_list);
+}
+
+// 修改快捷密码

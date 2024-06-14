@@ -29,7 +29,7 @@ pub struct HttpServerConfig {
 }
 
 
-#[derive(Clone, Serialize, Deserialize, Default,Debug)]
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct EmailConfig {
     pub mine_email: String,     // 发件人邮箱
     pub smtp_server: String,    // smtp服务器
@@ -128,6 +128,6 @@ pub async fn get_conn(config: &HttpServerConfig) -> Result<ConnectionType, sqlx:
 
 pub(crate) async fn init_db(config: &HttpServerConfig) -> ConnectionType {
     let conn: ConnectionType = get_conn(config).await.unwrap();
-    let conn =create_user_table(conn).await.unwrap();
+    let conn = create_user_table(conn).await.unwrap();
     create_player_table(conn).await.unwrap()
 }

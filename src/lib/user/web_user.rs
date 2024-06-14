@@ -10,7 +10,7 @@ use crate::lib::user::sql_user;
 
 use super::email_code::{EmaiCodeManager, EmailCodeSend, EmailManager, VerifyCode};
 // 注册用户
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize,Debug)]
 pub struct RegisterUser {
     pub email: String,
     pub password: String,
@@ -139,5 +139,39 @@ pub async fn token_verify(query_data: web::Query<HashMap<String, String>>) -> im
             code: 500,
             message: token,
         }),
+    }
+}
+
+// 忘记密码
+pub async fn forget_password(
+    user: web::Json<RegisterUser>,
+    config: web::Data<HttpServerConfig>,
+    query_data: web::Query<HashMap<String, String>>,
+    email_code_manager: web::Data<Addr<EmaiCodeManager>>,
+) -> HttpResponse {
+    let result = email_code_manager
+        .send(VerifyCode {
+            email: user.email.clone(),
+            code: query_data.get("code").unwrap().to_string(),
+        })
+        .await
+        .unwrap();
+    if result {
+        let conn = get_conn(&config).await.unwrap();
+        match sql_user::change_password(conn, &user).await {
+            Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+                code: 200,
+                message: "修改成功",
+            }),
+            Err(_) => HttpResponse::Ok().json(ResponseMessage {
+                code: 500,
+                message: "修改失败",
+            }),
+        }
+    } else {
+        return HttpResponse::Ok().json(ResponseMessage {
+            code: 500,
+            message: "验证码错误",
+        });
     }
 }
