@@ -3,13 +3,19 @@ use std::{
     io::{Read, Write},
 };
 
-use actix::Actor;
 use serde::{Deserialize, Serialize};
 use sqlx::{
     migrate::MigrateDatabase, Connection, MySqlConnection, PgConnection, Sqlite, SqliteConnection,
 };
 
-use super::{java::player::sql_player::create_player_table, user::sql_user::create_user_table};
+use super::{
+    acl::sql_acl::{create_acl_table, Operation, Resource},
+    java::player::sql_player::create_player_table,
+    user::{
+        sql_user::{change_password, create_user_table, get_user_id, register_user},
+        web_user::RegisterUser,
+    },
+};
 
 // 请求时消息
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,8 +32,8 @@ pub struct HttpServerConfig {
     pub sql_mode: SqlMode,
     pub sql_url: String,
     pub email_config: EmailConfig,
+    pub register_user: RegisterUser,
 }
-
 
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct EmailConfig {
@@ -45,6 +51,11 @@ pub enum SqlMode {
 
 impl Default for HttpServerConfig {
     fn default() -> Self {
+        // 生成随机八个字符串
+        let mut password = String::new();
+        for _ in 0..8 {
+            password.push((rand::random::<u8>() % 26 + 97) as char);
+        }
         let file_path = "config.yml";
         let config = HttpServerConfig {
             name: "联合公社".to_string(), // 服务器名称
@@ -53,6 +64,10 @@ impl Default for HttpServerConfig {
             sql_url: "sqlite://sqlite.db".to_string(),
             sql_mode: SqlMode::sqlite,
             email_config: EmailConfig::default(),
+            register_user: RegisterUser {
+                email: "admin".to_string(),
+                password,
+            },
         };
         match read_yml(&file_path) {
             Ok(config) => config,
@@ -81,10 +96,6 @@ pub fn read_yml(file_path: &str) -> Result<HttpServerConfig, Box<dyn std::error:
     file.read_to_string(&mut contents)?;
     let config: HttpServerConfig = serde_yaml::from_str(&contents)?;
     Ok(config)
-}
-
-impl Actor for HttpServerConfig {
-    type Context = actix::Context<Self>;
 }
 
 #[derive(Debug)]
@@ -129,5 +140,75 @@ pub async fn get_conn(config: &HttpServerConfig) -> Result<ConnectionType, sqlx:
 pub(crate) async fn init_db(config: &HttpServerConfig) -> ConnectionType {
     let conn: ConnectionType = get_conn(config).await.unwrap();
     let conn = create_user_table(conn).await.unwrap();
-    create_player_table(conn).await.unwrap()
+    let conn = create_player_table(conn).await.unwrap();
+    let conn = create_acl_table(conn).await.unwrap();
+    init_base_data_acl(config).await;
+    conn
 }
+
+// 初始化基本数据
+pub async fn init_base_data_acl(config: &HttpServerConfig) {
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_resource(conn, "resource")
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_resource(conn, "operation")
+        .await
+        .err();
+
+    // 获取资源id
+    let conn = get_conn(&config).await.unwrap();
+    let resource_id = crate::lib::acl::sql_acl::get_resource_id(conn, &Resource::default())
+        .await
+        .unwrap();
+
+    let conn = get_conn(&config).await.unwrap();
+    let operation_id = crate::lib::acl::sql_acl::get_resource_id(conn, &Operation::default())
+        .await
+        .unwrap();
+
+    let conn = get_conn(&config).await.unwrap();
+    let uid = match register_user(conn, &config.register_user).await {
+        Ok(uid) => uid.try_into().unwrap(),
+        Err(_) => {
+            // 修改密码
+            let conn = get_conn(&config).await.unwrap();
+            change_password(conn, &config.register_user).await.unwrap();
+            let conn = get_conn(&config).await.unwrap();
+            get_user_id(conn, &config.register_user.email)
+                .await
+                .unwrap()
+                .try_into()
+                .unwrap()
+        }
+    };
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Add)
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Remove)
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Check)
+        .await
+        .err();
+
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Add)
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Remove)
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Check)
+        .await
+        .err();
+}
+

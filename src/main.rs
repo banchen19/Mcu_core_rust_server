@@ -2,12 +2,10 @@ use actix::Actor;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use lib::{
-    config::HttpServerConfig,
-    java::player::web_player,
-    user::{
+    config::{get_conn, HttpServerConfig}, acl::web_acl, java::player::web_player, user::{
         email_code::{EmaiCodeManager, EmailManager},
         web_user,
-    },
+    }
 };
 use log::info;
 
@@ -59,7 +57,7 @@ async fn main() -> Result<(), std::io::Error> {
     let v6port = config.v6port;
 
     // 初始化数据库
-    lib::config::init_db(&config).await;
+    let conn = lib::config::init_db(&config).await;
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(config.clone()))
@@ -82,7 +80,10 @@ async fn main() -> Result<(), std::io::Error> {
                             .route("/register", web::post().to(web_user::register))
                             .route("/login", web::post().to(web_user::login))
                             // 忘记密码
-                            .route("/forget_password", web::post().to(web_user::forget_password)),
+                            .route(
+                                "/forget_password",
+                                web::post().to(web_user::forget_password),
+                            ),
                     );
                     cfg.service(
                         web::scope("/java").service(
@@ -95,10 +96,30 @@ async fn main() -> Result<(), std::io::Error> {
                                 // 查询拥有的玩家
                                 .route("/query_player", web::get().to(web_player::query_player))
                                 // 修改玩家密码
-                                .route("/update_password", web::post().to(web_player::update_player))
+                                .route(
+                                    "/update_password",
+                                    web::post().to(web_player::update_player),
+                                )
                                 // 删除玩家
                                 .route("/delete_player", web::post().to(web_player::delete_player)),
                         ),
+                    );
+
+                    cfg.service(
+                        web::scope("/acl").service(
+                            web::scope("/resource")
+                                .route("/get_all", web::get().to(web_acl::acl_get_all_resource))
+                                // 添加资源
+                                .route("/add", web::post().to(web_acl::acl_add_resource))
+                                // 删除资源
+                                .route("/delete", web::post().to(web_acl::acl_delete_resource))
+                        ).service(
+                            web::scope("/operation")
+                                // 添加用户对资源的操作
+                                .route("/add", web::post().to(web_acl::acl_add_user_operation))
+                                // 删除用户对资源的操作
+                                .route("/delete", web::post().to(web_acl::acl_remove_user_operation))
+                        )
                     );
                 }),
             )

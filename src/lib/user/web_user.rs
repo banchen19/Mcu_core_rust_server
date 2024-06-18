@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use actix::Addr;
 use actix_web::{web, HttpResponse, Responder};
+use serde::Serialize;
 
 use crate::lib::config::{get_conn, HttpServerConfig, ResponseMessage};
 use crate::lib::key::{create_token_time_h, gettoken_to_user_no_time};
@@ -10,7 +11,7 @@ use crate::lib::user::sql_user;
 
 use super::email_code::{EmaiCodeManager, EmailCodeSend, EmailManager, VerifyCode};
 // 注册用户
-#[derive(serde::Deserialize,Debug)]
+#[derive(Clone,serde::Deserialize,Debug,Serialize)]
 pub struct RegisterUser {
     pub email: String,
     pub password: String,

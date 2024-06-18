@@ -1,9 +1,12 @@
-name: actix-web-http-server
+name: 联合公社
 v4port: 2024
-v6port: 2025
+v6port: 2024
 sql_mode: sqlite
 sql_url: sqlite://sqlite.db
 email_config:
-  mine_email: 738270846@qq.com
-  smtp_server: smtp.qq.com
-  email_password: crmhckfoigatbgaa
+  mine_email: mcu@xiaochen.site
+  smtp_server: smtpdm.aliyun.com
+  email_password: MCusmtp123456
+register_user:
+  email: admin
+  password: uaixvgeo

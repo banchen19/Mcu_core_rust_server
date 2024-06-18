@@ -181,11 +181,33 @@ pub async fn get_all_user(conn: ConnectionType) -> Result<Vec<RegisterUser>, sql
     }
 }
 
+// 获取用户uid
+pub async fn get_user_id(conn: ConnectionType, email: &str) -> Result<i64, sqlx::Error> {
+    let sql = r#"
+        SELECT id FROM user WHERE email = ?;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let row = sqlx::query(sql).bind(email).fetch_one(&mut conn).await?;
+            Ok(row.try_get("id")?)
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let row = sqlx::query(sql).bind(email).fetch_one(&mut conn).await?;
+            Ok(row.try_get("id")?)
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let row = sqlx::query(sql).bind(email).fetch_one(&mut conn).await?;
+            Ok(row.try_get("id")?)
+        }
+    }
+}
+
 // 测试
 #[tokio::test]
 async fn test_register_user() {
     use crate::lib::config::HttpServerConfig;
     let conn = crate::lib::config::init_db(&HttpServerConfig::default()).await;
-    let users=get_all_user(conn).await.unwrap();
-    println!("{:?}",users);
+    let users = get_all_user(conn).await.unwrap();
+    println!("{:?}", users);
 }
