@@ -236,7 +236,9 @@ pub async fn acl_remove_user_operation(
     {
         Ok(_) => {
             let conn = get_conn(&config).await.unwrap();
-            match remove_acl(conn, uid, resource_id, operation).await {
+            let name_resource_id = get_resource_id(conn, name).await.unwrap();
+            let conn = get_conn(&config).await.unwrap();
+            match remove_acl(conn, uid, name_resource_id, operation).await {
                 Ok(_) => HttpResponse::Ok().json(ResponseMessage {
                     code: 200,
                     message: "Success",
