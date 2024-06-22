@@ -1,5 +1,5 @@
 use serde::Serialize;
-use sql_acl::{get_acl, Operation};
+use sql_acl::{get_acl, get_resource_id, Operation};
 
 use super::config::ConnectionType;
 
@@ -37,13 +37,20 @@ impl AclError {
 pub async fn check_acl(
     conn: ConnectionType,
     token: &str,
-    resource_id: i64,
+    resource_name: &str,
     operation_str: &str,
 ) -> Result<(), AclError> {
     match crate::lib::key::gettoken_to_user_no_time(token) {
         Ok(user) => {
             let operation = Operation::from_string(operation_str);
-            match get_acl(conn, user.claims.uid, resource_id).await {
+
+            let resource_id = match get_resource_id(conn, resource_name).await {
+                Ok(id) => id,
+                Err(_) => {
+                    return Err(AclError::NotFound);
+                }
+            };
+            match get_acl(resource_id.1, user.claims.uid, resource_id.0).await {
                 Ok(operations) => {
                     if Operation::get_operation(operations, &operation) {
                         return Ok(());

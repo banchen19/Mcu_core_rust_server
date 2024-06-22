@@ -1,17 +1,20 @@
 use std::collections::HashMap;
 
 use actix::Addr;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::http::header::AUTHORIZATION;
+use actix_web::{web, HttpRequest, HttpResponse, Responder};
 use serde::Serialize;
 
-use crate::lib::config::{get_conn, HttpServerConfig, ResponseMessage};
+use crate::lib::acl::check_acl;
+use crate::lib::acl::sql_acl::get_resource_id;
+use crate::lib::config::{get_conn, write_config_to_yml, HttpServerConfig, ResponseMessage};
 use crate::lib::key::{create_token_time_h, gettoken_to_user_no_time};
 use crate::lib::user::email_code::GenerateCode;
 use crate::lib::user::sql_user;
 
 use super::email_code::{EmaiCodeManager, EmailCodeSend, EmailManager, VerifyCode};
 // 注册用户
-#[derive(Clone,serde::Deserialize,Debug,Serialize)]
+#[derive(Clone, serde::Deserialize, Debug, Serialize)]
 pub struct RegisterUser {
     pub email: String,
     pub password: String,
@@ -116,9 +119,19 @@ pub async fn login(
     match sql_user::login_user(conn, &user).await {
         Ok(uid) => {
             let token = create_token_time_h(uid.try_into().unwrap(), 12);
-            HttpResponse::Ok().json(ResponseMessage {
+            let conn = get_conn(&config).await.unwrap();
+            #[derive(Serialize)]
+            struct User {
+                code: i32,
+                message: String,
+                relo: HashMap<String, Vec<String>>,
+            }
+            HttpResponse::Ok().json(User {
+                relo: crate::lib::acl::sql_acl::query_user_acl(conn, uid.try_into().unwrap())
+                    .await
+                    .unwrap(),
                 code: 200,
-                message: &token,
+                message: token,
             })
         }
         Err(_) => HttpResponse::InternalServerError().json(ResponseMessage {
@@ -174,5 +187,115 @@ pub async fn forget_password(
             code: 500,
             message: "验证码错误",
         });
+    }
+}
+
+// 获取所有用户
+pub async fn get_all(config: web::Data<HttpServerConfig>, req: HttpRequest) -> HttpResponse {
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    match check_acl(
+        conn,
+        token,
+        "user",
+        &crate::lib::acl::sql_acl::Operation::Remove.to_string(),
+    )
+    .await
+    {
+        Ok(_) => {
+            let conn = get_conn(&config).await.unwrap();
+            let users = sql_user::get_all_user(conn).await.unwrap();
+            return HttpResponse::Ok().json(users);
+        }
+        Err(_) => HttpResponse::Ok().json(ResponseMessage {
+            code: 500,
+            message: "权限不足",
+        }),
+    }
+}
+
+// 修改指定用户密码
+pub async fn change_password(
+    user: web::Json<RegisterUser>,
+    config: web::Data<HttpServerConfig>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    match check_acl(
+        conn,
+        token,
+        "user",
+        &crate::lib::acl::sql_acl::Operation::Update.to_string(),
+    )
+    .await
+    {
+        Ok(_) => {
+            let conn = get_conn(&config).await.unwrap();
+            if user.email == "admin" {
+                return HttpResponse::Ok().json(ResponseMessage {
+                    code: 500,
+                    message: "不能修改admin密码",
+                });
+            }
+            match sql_user::change_password(conn, &user).await {
+                Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+                    code: 200,
+                    message: "修改成功",
+                }),
+                Err(_) => HttpResponse::Ok().json(ResponseMessage {
+                    code: 500,
+                    message: "修改失败",
+                }),
+            }
+        }
+        Err(_) => HttpResponse::Ok().json(ResponseMessage {
+            code: 500,
+            message: "权限不足",
+        }),
+    }
+}
+
+// 删除指定用户
+pub async fn delete_user(
+    email_query: web::Query<HashMap<String, String>>,
+    config: web::Data<HttpServerConfig>,
+    req: HttpRequest,
+) -> HttpResponse {
+    let token = req.headers().get(AUTHORIZATION).unwrap().to_str().unwrap();
+    let email = email_query.get("email").unwrap();
+    let conn = get_conn(&config).await.unwrap();
+
+    match check_acl(
+        conn,
+        token,
+        "user",
+        &crate::lib::acl::sql_acl::Operation::Remove.to_string(),
+    )
+    .await
+    {
+        Ok(_) => {
+            let conn = get_conn(&config).await.unwrap();
+            if email == "admin" {
+                return HttpResponse::Ok().json(ResponseMessage {
+                    code: 500,
+                    message: "不能删除admin",
+                });
+            }
+            match sql_user::delete_user(conn, email).await {
+                Ok(_) => HttpResponse::Ok().json(ResponseMessage {
+                    code: 200,
+                    message: "删除成功",
+                }),
+                Err(_) => HttpResponse::Ok().json(ResponseMessage {
+                    code: 500,
+                    message: "删除失败",
+                }),
+            }
+        }
+        Err(_) => HttpResponse::Ok().json(ResponseMessage {
+            code: 500,
+            message: "权限不足",
+        }),
     }
 }

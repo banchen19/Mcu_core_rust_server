@@ -3,6 +3,7 @@ use std::{
     io::{Read, Write},
 };
 
+use actix::Actor;
 use serde::{Deserialize, Serialize};
 use sqlx::{
     migrate::MigrateDatabase, Connection, MySqlConnection, PgConnection, Sqlite, SqliteConnection,
@@ -49,6 +50,14 @@ pub enum SqlMode {
     postgres,
 }
 
+impl HttpServerConfig {
+    pub fn setpassword(&mut self, password: String) {
+        self.register_user.password = password;
+        let file_path = "config.yml";
+        let _ = write_config_to_yml(&self, file_path);
+    }
+}
+
 impl Default for HttpServerConfig {
     fn default() -> Self {
         // 生成随机八个字符串
@@ -77,6 +86,10 @@ impl Default for HttpServerConfig {
             }
         }
     }
+}
+
+impl Actor for HttpServerConfig {
+    type Context = actix::Context<Self>;
 }
 
 // 写入到yml文件
@@ -184,31 +197,70 @@ pub async fn init_base_data_acl(config: &HttpServerConfig) {
         }
     };
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Add)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Add)
+        .await
+        .unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Remove)
+        .await
+        .err();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Update)
+        .await
+        .err();
+
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Check)
+        .await
+        .err();
+
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id.0, &Operation::Add)
         .await
         .err();
     let conn = get_conn(&config).await.unwrap();
 
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Remove)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id.0, &Operation::Remove)
         .await
         .err();
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Check)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id.0, &Operation::Update)
         .await
         .err();
 
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Add)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id.0, &Operation::Check)
         .await
         .err();
-    let conn = get_conn(&config).await.unwrap();
 
-    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Remove)
+    /*******************用户 */
+    let user = "user";
+    let conn: ConnectionType = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_resource(conn, user)
+        .await
+        .err();
+
+    // 获取资源id
+    let conn = get_conn(&config).await.unwrap();
+    let resource_id = crate::lib::acl::sql_acl::get_resource_id(conn, user)
+        .await
+        .unwrap();
+
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Add)
+        .await
+        .unwrap();
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Remove)
+        .await
+        .err();
+
+    let conn = get_conn(&config).await.unwrap();
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Update)
         .await
         .err();
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, operation_id, &Operation::Check)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Check)
         .await
         .err();
 }
-

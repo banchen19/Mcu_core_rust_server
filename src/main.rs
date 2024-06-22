@@ -2,10 +2,13 @@ use actix::Actor;
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
 use lib::{
-    config::{get_conn, HttpServerConfig}, acl::web_acl, java::player::web_player, user::{
+    acl::web_acl,
+    config::{get_conn, HttpServerConfig},
+    java::player::web_player,
+    user::{
         email_code::{EmaiCodeManager, EmailManager},
         web_user,
-    }
+    },
 };
 use log::info;
 
@@ -57,7 +60,7 @@ async fn main() -> Result<(), std::io::Error> {
     let v6port = config.v6port;
 
     // 初始化数据库
-    let conn = lib::config::init_db(&config).await;
+    lib::config::init_db(&config).await;
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(config.clone()))
@@ -83,7 +86,17 @@ async fn main() -> Result<(), std::io::Error> {
                             .route(
                                 "/forget_password",
                                 web::post().to(web_user::forget_password),
-                            ),
+                            )
+                            // *******************admin********************
+                            // 获取所有用户
+                            .route("/get_all", web::get().to(web_user::get_all))
+                            // 修改用户密码
+                            .route(
+                                "/update_password",
+                                web::post().to(web_user::change_password),
+                            )
+                            // 删除用户
+                            .route("/delete", web::post().to(web_user::delete_user)),
                     );
                     cfg.service(
                         web::scope("/java").service(
@@ -106,20 +119,27 @@ async fn main() -> Result<(), std::io::Error> {
                     );
 
                     cfg.service(
-                        web::scope("/acl").service(
-                            web::scope("/resource")
-                                .route("/get_all", web::get().to(web_acl::acl_get_all_resource))
-                                // 添加资源
-                                .route("/add", web::post().to(web_acl::acl_add_resource))
-                                // 删除资源
-                                .route("/delete", web::post().to(web_acl::acl_delete_resource))
-                        ).service(
-                            web::scope("/operation")
-                                // 添加用户对资源的操作
-                                .route("/add", web::post().to(web_acl::acl_add_user_operation))
-                                // 删除用户对资源的操作
-                                .route("/delete", web::post().to(web_acl::acl_remove_user_operation))
-                        )
+                        web::scope("/acl")
+                            .service(
+                                web::scope("/resource")
+                                    .route("/get_all", web::get().to(web_acl::acl_get_all_resource))
+                                    // 添加资源
+                                    .route("/add", web::post().to(web_acl::acl_add_resource))
+                                    // 删除资源
+                                    .route("/delete", web::post().to(web_acl::acl_delete_resource)),
+                            )
+                            .service(
+                                web::scope("/operation")
+                                    // 添加用户对资源的操作
+                                    .route("/add", web::post().to(web_acl::acl_add_user_operation))
+                                    // 删除用户对资源的操作
+                                    .route(
+                                        "/delete",
+                                        web::post().to(web_acl::acl_remove_user_operation),
+                                    ),
+                            )
+                            // 查询指定用户对资源的操作
+                            .route("/query", web::get().to(web_acl::acl_get_user_operation)),
                     );
                 }),
             )

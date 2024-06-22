@@ -151,7 +151,7 @@ pub async fn get_all_user(conn: ConnectionType) -> Result<Vec<RegisterUser>, sql
             while let Some(row) = quer.try_next().await? {
                 vec.push(RegisterUser {
                     email: row.try_get("email")?,
-                    password: row.try_get("password")?,
+                    password: "********".to_string(),
                 });
             }
             Ok(vec)
@@ -199,6 +199,39 @@ pub async fn get_user_id(conn: ConnectionType, email: &str) -> Result<i64, sqlx:
         ConnectionType::Postgres(mut conn) => {
             let row = sqlx::query(sql).bind(email).fetch_one(&mut conn).await?;
             Ok(row.try_get("id")?)
+        }
+    }
+}
+
+pub async fn delete_user(
+    conn: ConnectionType,
+    email: &str,
+) -> Result<u64, sqlx::Error> {
+    let sql = r#"
+        DELETE FROM user WHERE email = ?;
+    "#;
+
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.last_insert_rowid().try_into().unwrap())
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.last_insert_id())
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let quer_id = sqlx::query(sql)
+                .bind(email)
+                .execute(&mut conn)
+                .await?;
+            Ok(quer_id.rows_affected())
         }
     }
 }

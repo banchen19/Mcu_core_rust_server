@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::Serialize;
 
 use crate::lib::{
@@ -10,6 +12,7 @@ use crate::lib::{
 pub enum Operation {
     Add,
     Remove,
+    Update,
     Check,
     None,
 }
@@ -19,6 +22,7 @@ impl Operation {
         match self {
             Operation::Add => String::from("Add"),
             Operation::Remove => String::from("Remove"),
+            Operation::Update => String::from("Update"),
             Operation::Check => String::from("Check"),
             Operation::None => String::from("Null"),
         }
@@ -28,6 +32,7 @@ impl Operation {
         match operation {
             "Add" => Operation::Add,
             "Remove" => Operation::Remove,
+            "Update" => Operation::Update,
             "Check" => Operation::Check,
             _ => Operation::None,
         }
@@ -41,7 +46,6 @@ impl Operation {
     pub fn default() -> String {
         "operation".to_string()
     }
-    
 }
 
 // 资源
@@ -149,7 +153,7 @@ pub async fn add_acl(
                 .bind(resource_id)
                 .bind(operation.to_string())
                 .execute(&mut conn)
-                .await?;
+                .await.err();
             Ok(ConnectionType::Sqlite(conn))
         }
 
@@ -159,7 +163,7 @@ pub async fn add_acl(
                 .bind(resource_id)
                 .bind(operation.to_string())
                 .execute(&mut conn)
-                .await?;
+                .await.err();
             Ok(ConnectionType::Mysql(conn))
         }
         ConnectionType::Postgres(mut conn) => {
@@ -168,7 +172,7 @@ pub async fn add_acl(
                 .bind(resource_id)
                 .bind(operation.to_string())
                 .execute(&mut conn)
-                .await?;
+                .await.err();
             Ok(ConnectionType::Postgres(conn))
         }
     }
@@ -258,7 +262,7 @@ pub async fn get_acl(
     match conn {
         ConnectionType::Sqlite(mut conn) => {
             let uid = uid as i64;
-            let row_operation = sqlx::query(sql)
+            let row_operation: Vec<sqlx::sqlite::SqliteRow> = sqlx::query(sql)
                 .bind(uid)
                 .bind(resource_id)
                 .fetch_all(&mut conn)
@@ -312,22 +316,25 @@ pub async fn get_acl(
 }
 
 // 获取资源id
-pub async fn get_resource_id(conn: ConnectionType, name: &str) -> Result<i64, sqlx::Error> {
+pub async fn get_resource_id(
+    conn: ConnectionType,
+    name: &str,
+) -> Result<(i64, ConnectionType), sqlx::Error> {
     let sql = r#"SELECT id FROM resource WHERE name = $1"#;
     use sqlx::Row;
     match conn {
         ConnectionType::Sqlite(mut conn) => {
             let id = sqlx::query(sql).bind(name).fetch_one(&mut conn).await?;
-            Ok(id.get(0))
+            Ok((id.get(0), ConnectionType::Sqlite(conn)))
         }
 
         ConnectionType::Mysql(mut conn) => {
             let id = sqlx::query(sql).bind(name).fetch_one(&mut conn).await?;
-            Ok(id.get(0))
+            Ok((id.get(0), ConnectionType::Mysql(conn)))
         }
         ConnectionType::Postgres(mut conn) => {
             let id = sqlx::query(sql).bind(name).fetch_one(&mut conn).await?;
-            Ok(id.get(0))
+            Ok((id.get(0), ConnectionType::Postgres(conn)))
         }
     }
 }
@@ -378,24 +385,101 @@ pub async fn get_all_resource(conn: ConnectionType) -> Result<Vec<Resource>, sql
 }
 
 // 初始化对资源操作权
-pub async fn init_user_acl(config: &HttpServerConfig, uid: i64, resource: &str)->Result<(), sqlx::Error>{
+pub async fn init_user_acl(
+    config: &HttpServerConfig,
+    uid: i64,
+    resource: &str,
+) -> Result<(), sqlx::Error> {
     let conn = get_conn(&config).await.unwrap();
-    let resource_id = crate::lib::acl::sql_acl::get_resource_id(conn, &Resource::default())
+    let resource_id = crate::lib::acl::sql_acl::get_resource_id(conn, resource)
         .await
         .unwrap();
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Add)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Add)
         .await
         .err();
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Remove)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Remove)
         .await
         .err();
     let conn = get_conn(&config).await.unwrap();
-    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id, &Operation::Check)
+    crate::lib::acl::sql_acl::add_acl(conn, uid, resource_id.0, &Operation::Check)
         .await
         .err();
     Ok(())
+}
+
+// 查询用户对资源的操作
+pub async fn query_user_acl(
+    conn: ConnectionType,
+    uid: u64,
+) -> Result<HashMap<String, Vec<String>>, sqlx::Error> {
+    let sql = r#"SELECT
+    resource.name AS resource_name,
+    acl.operation AS operation
+FROM
+    acl
+JOIN
+    resource ON resource.id = acl.resource_id
+WHERE
+    acl.uid = $1"#;
+    use sqlx::Row;
+    match conn {
+        ConnectionType::Sqlite(mut conn) => {
+            let uid = uid as i64;
+            let row_operation = sqlx::query(sql).bind(uid).fetch_all(&mut conn).await?;
+            let mut user_resources: HashMap<String, Vec<String>> = HashMap::new();
+            for row in row_operation {
+                let resource_name: String = row.try_get("resource_name")?;
+                let operation: String = row.try_get("operation")?;
+                if user_resources.contains_key(&resource_name) {
+                    user_resources
+                        .get_mut(&resource_name)
+                        .unwrap()
+                        .push(operation);
+                } else {
+                    user_resources.insert(resource_name, vec![operation]);
+                }
+            }
+            Ok(user_resources)
+        }
+        ConnectionType::Mysql(mut conn) => {
+            let uid = uid as i64;
+            let row_operation = sqlx::query(sql).bind(uid).fetch_all(&mut conn).await?;
+            let mut user_resources: HashMap<String, Vec<String>> = HashMap::new();
+            for row in row_operation {
+                let resource_name: String = row.try_get("resource_name")?;
+                let operation: String = row.try_get("operation")?;
+                if user_resources.contains_key(&resource_name) {
+                    user_resources
+                        .get_mut(&resource_name)
+                        .unwrap()
+                        .push(operation);
+                } else {
+                    user_resources.insert(resource_name, vec![operation]);
+                }
+            }
+            Ok(user_resources)
+        }
+        ConnectionType::Postgres(mut conn) => {
+            let uid = uid as i64;
+            let row_operation = sqlx::query(sql).bind(uid).fetch_all(&mut conn).await?;
+            let mut user_resources: HashMap<String, Vec<String>> = HashMap::new();
+            for row in row_operation {
+                let resource_name: String = row.try_get("resource_name")?;
+                let operation: String = row.try_get("operation")?;
+                if user_resources.contains_key(&resource_name) {
+                    user_resources
+                        .get_mut(&resource_name)
+                        .unwrap()
+                        .push(operation);
+                } else {
+                    user_resources.insert(resource_name, vec![operation]);
+                }
+            }
+            Ok(user_resources)
+        }
+    }
 }
 
 #[tokio::test]
@@ -403,6 +487,6 @@ async fn test_acl() {
     use crate::HttpServerConfig;
     let config = HttpServerConfig::default();
     let conn = get_conn(&config).await.unwrap();
-    let resources = get_all_resource(conn).await.unwrap();
-    println!("{:?}", resources);
+    let user_resource = query_user_acl(conn, 1).await.unwrap();
+    println!("{:#?}", user_resource);
 }
