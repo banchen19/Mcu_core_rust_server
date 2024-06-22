@@ -199,7 +199,7 @@ pub async fn query_user(conn: ConnectionType, uid: i64) -> Result<Vec<Player>, s
     }
 }
 
-// 修改玩家密码
+// 修改玩家密码-修改快捷密码
 pub async fn sql_update_player_password(
     conn: ConnectionType,
     name: &str,
@@ -339,5 +339,3 @@ async fn test_sql_player() {
     let player_list = query_user(conn, uid).await.unwrap();
     println!("{:?}", player_list);
 }
-
-// 修改快捷密码

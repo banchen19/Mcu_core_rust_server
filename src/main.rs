@@ -4,7 +4,9 @@ use actix_web::{web, App, HttpServer};
 use lib::{
     acl::web_acl,
     config::{get_conn, HttpServerConfig},
-    java::player::web_player,
+    java::player::{
+        self, chatserver::{chatserver, session}, onlineplayer::PlayerManager, web_player
+    },
     user::{
         email_code::{EmaiCodeManager, EmailManager},
         web_user,
@@ -44,6 +46,11 @@ async fn main() -> Result<(), std::io::Error> {
     let config = HttpServerConfig::default();
     info!(" http server config: {:#?}", config);
 
+    // 聊天服务器
+    let server = chatserver::ChatServer::new().start();
+    // 玩家管理
+    let players = PlayerManager::new().start();
+
     // 邮箱验证码管理
     let email_code_manager = EmaiCodeManager::new().start();
 
@@ -63,6 +70,8 @@ async fn main() -> Result<(), std::io::Error> {
     lib::config::init_db(&config).await;
     HttpServer::new(move || {
         App::new()
+            .app_data(web::Data::new(server.clone()))
+            .app_data(web::Data::new(players.clone()))
             .app_data(web::Data::new(config.clone()))
             .app_data(web::Data::new(email_code_manager.clone()))
             .app_data(web::Data::new(emailmanager.clone()))
@@ -114,9 +123,17 @@ async fn main() -> Result<(), std::io::Error> {
                                     web::post().to(web_player::update_player),
                                 )
                                 // 删除玩家
-                                .route("/delete_player", web::post().to(web_player::delete_player)),
+                                .route("/delete_player", web::post().to(web_player::delete_player))
+                                // 在线玩家-加入
+                                .route("/player_join", web::post().to(player::player_join))
+                                // 在线玩家-查询在线玩家
+                                .route("/players", web::get().to(player::get_players))
+                                // 在线玩家-离开
+                                .route("/player_leave", web::post().to(player::player_leave),
+                                ),
                         ),
                     );
+                    cfg.service(web::resource("/ws").route(web::get().to(session::ws_route)));
 
                     cfg.service(
                         web::scope("/acl")

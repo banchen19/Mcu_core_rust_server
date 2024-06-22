@@ -11,7 +11,7 @@ use crate::lib::java::player::onlineplayer::{PlayerManager, PlayersRemoveByServe
 use super::chatserver;
 
 pub fn chatserver_config(cfg: &mut web::ServiceConfig) {
-    cfg.service(web::resource("/ws").route(web::get().to(ws_route)));
+    
 }
 
 pub async fn ws_route(

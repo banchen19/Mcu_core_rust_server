@@ -18,14 +18,13 @@ pub struct BroadcastData {
 }
 
 pub struct OnlinePlayer {
-    pub uid: i32,
     pub realname: String,
     pub server: String,
 }
 
 pub struct PlayerManager {
-    // 玩家 服务器
-    players: HashMap<i32, OnlinePlayer>,
+    // 服务器、玩家
+    players: HashMap<String, Vec<String>>,
 }
 
 impl Actor for PlayerManager {
@@ -42,86 +41,87 @@ impl PlayerManager {
 
 impl PlayerManager {
     /// 添加玩家
-    pub fn add_player(&mut self, player: OnlinePlayer) {
-        self.players.insert(player.uid, player);
+    pub fn add_player(&mut self, player: OnlinePlayer) -> bool {
+        if self.players.contains_key(&player.server) {
+            let mut server_players = self.players.get(&player.server).unwrap().clone();
+            if !server_players.contains(&player.realname) {
+                server_players.push(player.realname);
+                if let Some(players) = self.players.get_mut(&player.server) {
+                    *players = server_players.to_vec();
+                    return true;
+                }
+            }
+        } else {
+            let mut server_players = Vec::new();
+            server_players.push(player.realname);
+            self.players.insert(player.server, server_players);
+            return true;
+        }
+        false
     }
     /// 移除某个玩家
-    pub fn remove_player(&mut self, player: OnlinePlayer) {
-        self.players.remove(&player.uid);
-    }
-    /// 获取所有在线玩家名字的列表
-    pub fn get_players(&self) -> Vec<String> {
-        self.players
-            .values()
-            .map(|player| player.realname.clone())
-            .collect()
+    pub fn remove_player(&mut self, player: OnlinePlayer) -> bool {
+        let server_players = match self.players.get(&player.server) {
+            Some(players) => players,
+            None => return false,
+        };
+        if server_players.contains(&player.realname) {
+            self.players
+                .get_mut(&player.server)
+                .unwrap()
+                .retain(|name| name != &player.realname);
+            true
+        } else {
+            false
+        }
     }
 
     /// 获取所有玩家,带服务端名
     /// 返回预期：{"Bds": ["玩家名字2", "玩家名字"]}
-    pub fn get_players_with_server(&self) -> HashMap<String, Vec<String>> {
-        let mut players_by_server: HashMap<String, Vec<String>> = HashMap::new();
-        for player in self.players.values() {
-            players_by_server
-                .entry(player.server.clone())
-                .or_insert_with(Vec::new)
-                .push(player.realname.clone());
-        }
-        players_by_server
+    pub fn get_players(&self) -> HashMap<String, Vec<String>> {
+        self.players.clone()
     }
     /// 移除所有玩家
     pub fn _remove_player_all(&mut self) {
         self.players.clear();
     }
+
     /// 删除指定服务端下的所有玩家
     fn remove_players_by_server(&mut self, server: &str) {
-        self.players.retain(|_, player| player.server != server);
+        self.players.retain(|k, _| k != server);
     }
 }
 
 // 接受消息
 #[derive(Message)]
-#[rtype(result = "()")]
+#[rtype(result = "bool")]
 pub struct PlayerUpdata {
     pub(crate) r#type: String,
     pub player: OnlinePlayer,
 }
 
 impl Handler<PlayerUpdata> for PlayerManager {
-    type Result = ();
+    type Result = bool;
 
-    fn handle(&mut self, player_join: PlayerUpdata, _: &mut Context<Self>) {
+    fn handle(&mut self, player_join: PlayerUpdata, _: &mut Context<Self>) -> bool {
         if player_join.r#type == "join" {
-            self.add_player(player_join.player);
+            self.add_player(player_join.player)
         } else {
-            self.remove_player(player_join.player);
+            self.remove_player(player_join.player)
         }
     }
 }
 
 #[derive(Message)]
-#[rtype(result = "Vec<String>")]
+#[rtype(result = "String")]
 pub struct PlayersGet;
 impl Handler<PlayersGet> for PlayerManager {
-    type Result = Vec<String>;
-
-    fn handle(&mut self, _: PlayersGet, _: &mut Context<Self>) -> Vec<String> {
-        self.get_players()
-    }
-}
-
-#[derive(Message)]
-#[rtype(result = "String")]
-pub struct PlayersGetWithServer;
-
-impl Handler<PlayersGetWithServer> for PlayerManager {
     type Result = String;
 
-    fn handle(&mut self, _: PlayersGetWithServer, _: &mut Context<Self>) -> String {
-        json!(self.get_players_with_server()).to_string()
+    fn handle(&mut self, _: PlayersGet, _: &mut Context<Self>) -> String {
+        json!(self.get_players()).to_string()
     }
 }
-
 // 清除指定服务端下的所有玩家
 #[derive(Message)]
 #[rtype(result = "()")]
